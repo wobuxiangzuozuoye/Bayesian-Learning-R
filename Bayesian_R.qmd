@@ -1,0 +1,1779 @@
+---
+title: "Bayesian Assignment"
+author: "Xinyue Zhang"
+format: html
+execute: 
+  eval: false
+  echo: true
+editor: visual
+---
+
+```{r}
+library(mvtnorm)
+```
+
+# Problem1 Beta-Bernoulli
+
+## Problem 1a Posterior Stats
+
+Given n,s and Prior, calculate Posterior Mean, Variance, SD.
+
+$$ α_{post}=α_0+s,\beta_{post}=\beta_0+f $$
+
+We observe n=20 Bernoulli trials with s=14 successes. The prior distribution for the success probability is
+
+$$ θ∼Beta(α_0,β_0), α_0=2,β_0=2 $$
+
+The posterior is also a Beta distribution, with parameters updated as
+
+$$ θ|y ∼Beta(α_0+s,β_0+f) $$
+
+$f=n-s=20-14=6$
+
+$$ θ|y∼Beta(16,8) $$
+
+The posterior mean is
+
+$$ E[θ|y]=\frac{α}{α+β}=\frac{16}{16+8}≈0.667 $$
+
+The posterior variance and standard deviation is
+
+$$ Var(θ|y)=\frac{αβ}{(α+β)^2(α+β+1)}≈0.0089 $$
+
+$$ SD(θ|y)=\sqrt{0.0089}≈0.094 $$
+
+```{r}
+alpha0 <- 2
+beta0 <- 2
+s <- 14
+n <- 20
+f <- n - s
+
+alpha_post <- alpha0 + s
+beta_post <- beta0 + f
+
+true_mean <- alpha_post / (alpha_post + beta_post)
+true_sd <- sqrt(alpha_post * beta_post / 
+                  ((alpha_post + beta_post)^2 * (alpha_post + beta_post + 1)))
+
+set.seed(123)
+nDraws <- 100000
+theta_draws <- rbeta(nDraws, alpha_post, beta_post)
+
+mc_means <- cumsum(theta_draws) / (1:nDraws)
+mc_sds <- sqrt(cumsum((theta_draws - true_mean)^2) / (1:nDraws))
+
+print(true_mean)
+print(true_sd)
+```
+
+We can verify graphically:
+
+```{r}
+par(mfrow=c(1,2))
+plot(mc_means, type="l", col="black", ylab="MC mean", xlab="Draws", ylim=c(0.66, 0.67))
+abline(h=true_mean, col="orange", lwd=2)
+
+plot(mc_sds, type="l", col="black", ylab="MC sd", xlab="Draws", ylim=c(0.091, 0.098))
+abline(h=true_sd, col="orange", lwd=2)
+```
+
+As the number of random draws grows large, the Monte Carlo estimates of the posterior mean and standard deviation converge to the true values: posterior mean of 0.667 and posterior standard deviation of 0.094.
+
+## Problem 1b Probability Calculation
+
+The posterior distribution is given as:
+
+$$ θ|y∼Beta(α_0+s,β_0+f)=Beta(16,8) $$
+
+We are interested in computing
+
+$$ Pr(θ<0.5|y) $$
+
+We approximate the posterior probability using Monte Carlo simulation with $nDraws=10000$.
+
+```{r}
+set.seed(123)
+
+# posterior parameters
+alpha_post <- 16
+beta_post <- 8
+
+# Monte Carlo simulation
+nDraws <- 10000
+theta_draws <- rbeta(nDraws, alpha_post, beta_post)
+prob_sim <- mean(theta_draws < 0.5)
+
+print(prob_sim)
+```
+
+The exact probability is obtained from the cumulative distribution function(CDF) of the Beta distribution:
+
+$$ Pr(θ<0.5|y)=F_{Beta(16,8)}(0.5) $$
+
+```{r, eval = FALSE}
+# Q1.2 Point estimation
+# 1. Posterior Mean - Quadratic Loss
+postMean <- sum(thetaGrid * postDens * binWidth)
+
+# 2. Posterior Median - Linear/Abusolute Loss
+postMedian <- thetaGrid[which.max(cumsum(postDens * binWidth) >= 0.5)]
+
+# 3. Posterior Mode - Zero-one Loss
+postMode <- thetaGrid[which.max(postDens)]
+```
+
+```{r}
+prob_exact <- pbeta(0.5, alpha_post, beta_post)
+
+print(prob_exact)
+```
+
+As the results show, the simulated posterior probability is 0.0449 and the exact posterior probability is 0.0466. The two results are very close, it shows that Monte Carlo approximation is useful and effective when the exact distribution is known.
+
+## Problem 1c Log-odds Variable Transformation
+
+$$ \phi=log\left(\frac{\theta}{1-\theta}\right),\theta|y\sim Beta(16,8) $$
+
+```{r}
+set.seed(123)
+
+# draw samples from the posterior distribution of theta
+nDraws <- 10000
+theta_draws <- rbeta(nDraws, 16, 8)
+
+# transform samples to log-odds
+phi_draws <- log(theta_draws / (1 - theta_draws))
+
+# plot histogram of posterior distribution of phi
+hist(phi_draws, breaks = 40, freq = FALSE,
+     main = "Posterior distribution of log-odds (phi)",
+     xlab = expression(phi))
+
+# compute posterior mean and 90% credible interval for phi
+mean_phi <- mean(phi_draws)
+ci_phi <- quantile(phi_draws, probs = c(0.05, 0.95))
+
+mean_phi
+ci_phi
+```
+
+```{r, eval = FALSE}
+# Q1.3 95% Credible Interval
+cdf <- cumsum(postDens * binWidth)
+lower <- thetaGrid[max(which(cdf <= 0.025))]
+upper <- thetaGrid[min(which(cdf >= 0.975))]
+
+cat("Mean:", postMean, "\nMode:", postMode, "\nMedian:", postMedian, 
+    "\n95% CI: [", lower, ",", upper, "]\n")
+```
+
+We simulated 10000 draws from the posterior distribution of $\theta\sim Beta(16,8)$ and transformed them into log-odds values. The posterior distribution of $\phi$ is bell-shaped and centered on positive values. The posterior mean of $\phi$ is about 0.726 and the 90% credible interval is about (0.022, 1.488).
+
+The results indicate that the posterior distribution places high probability on $\theta>0.5$.
+
+# Problem 2
+
+We assume the following model for the standardized Ericsson daily stock returns $$ 𝑋1,…,𝑋𝑛|𝜈 \stackrel{i.i.d.}{\sim}𝑡(0, 1, 𝜈) $$
+
+Prior for $\nu$ $$\nu \sim \text{Exponential}(\lambda=0.25)$$ so, $$p(\nu)=\lambda e^{-\lambda \nu}=0.25\,e^{-0.25\nu},\ \nu>0.$$
+
+```{r}
+load("ericsson.RData") # Place the data file in the same directory as your Quarto file.
+x = (returns - mean(returns)) / sd(returns) # standardized returns
+hist(x, 30, freq = FALSE, xlab = "daily returns (standardized)", 
+     ylab = "density", col = "blue")
+```
+
+## Problem 2a MLE
+
+Log-Likelihood Function $$ \log L(\nu) = \sum_{i=1}^n \log p(x_i | \nu) $$ Log-Likelihood Function for Student's t-distribution $$ \ell(\nu) := \log L(\nu) = \sum_{i=1}^n \log p(x_i | \nu) = \sum_{i=1}^n \log f_t(x_i;\nu)$$
+
+```{r}
+# log likelihood function
+nu = seq(1,30,by = 0.5)
+loglik_function <- function(nu){
+  sum(log(dt(x,df = nu)))
+}
+
+loglik_values <- sapply(nu,loglik_function)
+
+# plotting the log-likelihoods
+plot(nu, loglik_values, type = 'l', main = "log-likelihood function for"~nu,
+     xlab = expression(nu), ylab = "Log-Likelihood", col = "darkred", lwd = 2)
+
+# Analytical calculation of Maximum likelihood
+MLE_nu <- nu[which.max(loglik_values)]
+MLE_nu
+
+abline(v = MLE_nu,lty = 2, lwd = 2, col ="darkblue")
+```
+
+Conclusion : From the log-likelihood plot of $\nu$, the curve reaches its maximum at approximately 5.5 or 6.
+
+## Problem 2b Likelihood Ratio
+
+Plot the likelihood $L(\nu)$ and compare $L(\nu=1)$ vs $L(\nu=10)$
+
+Likelihood Function $$ L(\nu) = \prod_{i=1}^n p(x_i | \nu) $$ Likelihood Function for Student's t-distribution $$L(\nu) \;=\; p(x\mid\nu) \;=\; \prod_{i=1}^n f_t(x_i;\nu)$$ $$\ell(\nu) := \log L(\nu) = \sum_{i=1}^n \log f_t(x_i;\nu)$$
+
+$L(\nu)$ values can underflow, hence the scaled likelihood $$\tilde L(\nu) = \frac{L(\nu)}{\max_\nu L(\nu)} = \exp(\ell(\nu) - \max_\nu\ell(\nu)).$$
+
+```{r}
+# Likelihood - product of densities
+nu = seq(1,30,by = 0.5)
+loglikelihood_function <- function(nu){
+  sum(dt(x,df = nu,log = TRUE))
+}
+
+loglikelihood_values <- sapply(nu,loglikelihood_function)
+
+max(loglikelihood_values)
+
+# scaling likelihood to avoid underflow, i.e, since the values go very small , 
+# most of the values might be taken as zero.
+likelihood_values<-  exp(loglikelihood_values - max(loglikelihood_values))
+
+# plotting the likelihoods
+plot(nu, likelihood_values, type = 'l', main = "likelihood function for"~nu,
+     xlab = expression(nu), ylab = "Likelihood", col = "darkred", lwd = 2)
+
+# comparing nu = 1 and nu = 10
+likelihood_nu1 <- exp(loglikelihood_function(1) - max(loglikelihood_values))
+likelihood_nu1
+likelihood_nu10 <- exp(loglikelihood_function(10) - max(loglikelihood_values))
+likelihood_nu10
+
+points(x = c(1,10), y = c(likelihood_nu1, likelihood_nu10), col = "darkblue",pch = 19 )
+text(c(1, 10), c(likelihood_nu1, likelihood_nu10), 
+     labels=c(round(likelihood_nu1, 4), round(likelihood_nu10, 4)), pos=3)
+```
+
+Conclusion : Likelihood for $\nu = 10$ is much larger than for $\nu = 1$, this means that the data we have is much more likely to occur if $\nu = 10$ than if $\nu = 1$. Thus data fits the Student-t model much better when $\nu = 10$.
+
+## Problem 2c Log-Posterior
+
+Compute the posterior $p(\nu\mid x)$ by simulation and plot log-posterior.
+
+Prior Density Function (Exponential prior) $$\nu \sim \text{Exponential}(\lambda = 0.25)$$ $$p(\nu) = 0.25 \, e^{-0.25 \nu}, \quad \nu > 0$$ Unnormalized Posterior $$p(\nu \mid x) \propto L(\nu) \, p(\nu)$$ Log-Posterior $$\log p(\nu \mid x) \propto \ell(\nu) + \log p(\nu)$$ Log-Posterior for Student’s t model with exponential prior $$\log p(\nu \mid x) \propto \sum_{i=1}^n \log f_t(x_i;\nu) + \log(0.25) - 0.25\nu$$ Since the posterior is not available in closed form, we evaluate it on a grid of $\nu$ values and plot $\log p(\nu \mid x)$.
+
+```{r}
+# log-likelihood function for student's t distribution
+# dt = density of t-distribution
+
+nu = seq(1,30,by = 0.5)
+loglikelihood_function <- function(nu_val){
+  sum(dt(x,df = nu_val,log = TRUE))
+}
+
+# log of prior exponential distribution
+log_prior_expo <- function(nu_val){
+  log(0.25) - 0.25 * nu_val
+}
+
+# log posterior
+log_posterior <- function(nu_val) {
+  loglikelihood_function(nu_val) + log_prior_expo(nu_val)
+}
+
+# log posterior over grid of values
+log_posterior_values<- sapply(nu, log_posterior)
+
+plot(nu, log_posterior_values, type = 'l', main = "Log posterior for"~nu,
+     xlab = expression(nu), ylab = "Log Posterior", col = "darkred", lwd = 2)
+```
+
+## Problem 2d Normalization
+
+Plot the posterior distribution of 𝜈and overlay the prior density (numerical integration)
+
+Unnormalized posterior $$\tilde{p}(\nu \mid x) = \exp\{\ell(\nu) + \log p(\nu)\}$$ Normalized posterior density Since there is no closed form, we normalize numerically on a grid of $\nu$, $$p(\nu \mid x) \approx \frac{\tilde{p}(\nu \mid x)} {\sum_j \tilde{p}(\nu_j \mid x)\,\Delta \nu}$$
+
+```{r}
+# Unnormalizing the posterior from 2c 
+# This gives the unnormalized posterior values at each \nu.
+unnormalized_posterior <- exp(log_posterior_values)
+
+# Computing the normalizing constant integral(tilde{p}(nu|x) dnu)
+delta = nu[2] - nu[1]
+normalizing_constant <- sum(unnormalized_posterior)*delta
+normalized_posterior <- unnormalized_posterior / normalizing_constant
+
+plot(nu,normalized_posterior,main = "Posterior Distribution of "~nu,
+     col = "darkblue", type = "l", lwd = 2, xlab = expression(nu),
+     ylab = "Posterior Density")
+
+# prior density 
+prior_density <- dexp(nu, rate = 0.25)
+lines(nu,prior_density, col="indianred",lty = 1,lwd = 2)
+```
+
+## Problem 2e Posterior Mean
+
+Posterior mean by numerical integration
+
+Posterior Mean $$\mathbb{E}[\nu \mid x] = \int \nu \, p(\nu \mid x) \, d\nu$$ Numerical Posterior Mean Since we compute numerically, $$\mathbb{E}[\nu \mid x] \approx \sum_j \nu_j \, p(\nu_j \mid x) \, \Delta \nu$$
+
+Posterior Normalization Check $$\sum_j p(\nu_j \mid x) \, \Delta \nu \approx 1$$
+
+```{r}
+# Computing posterior Mean 
+posterior_mean <- sum(nu*normalized_posterior*delta)
+posterior_mean
+
+# If this is close to 1, then your posterior is properly normalized.
+# That’s essential for the mean to be correct.
+sum(normalized_posterior * delta)
+```
+
+```{r, eval = FALSE}
+# Q1 : Grid Approximation
+load("filename.RData")
+hist(data_y, 30, c = "blue")
+
+# Q1.1 Plot posterior
+# 1.Define likelihood function from the package
+dy_density <- function()
+  
+# 2. Define log posterior
+logPost <- function(theta, data_y){
+  # A. Log Likelihood
+  logLik <- sum(dy_density(data_y, "estpara" = theta, log = TRUE))
+  # B. Log Prior
+  logPrior <- dnorm(theta, mean = , sd = , log = TRUE)
+  
+  return(logLik + logPrior)
+}
+
+# 3. Grid calculate(range -10,10 and narrow it)
+thetaGrid <- seq(-10, 10, length = 1000)
+postDens <- rep(0, length(thetaGrid))
+
+for (i in 1:length(thetaGrid)){
+  postDens[i] <- exp(logPost(thetaGrid[i], data_y))
+}
+
+binWidth <- thetaGrid[2] - thetaGrid[1]
+postDens <- postDens / (sum(postDens) * binWidth)
+
+# 4.Plot
+plot(thetaGrid, postDens, type = "l", col = "orange", lwd = 2,
+     main = "Posterior Density", xlab = expression(theta), ylab = "Density")
+```
+
+# Problem 3 Gamma-Poisson
+
+## Problem 3a Posterior Probability
+
+Gamma posterior, find prob of demand $\theta$ \>8.
+
+```{r, eval=FALSE}
+# update the model
+x <- c(3,5,4,3,6,8,6,1,14,3)
+alpha0 <- 7; beta0 <- 2
+alpha_n <- alpha0 + sum(x)     # 60
+beta_n  <- beta0 + length(x)   # 12
+
+# simulate posterior draws for theta
+set.seed(1)
+theta_draws <- rgamma(10000, shape = alpha_n, rate = beta_n)
+hist(theta_draws,
+     freq = FALSE,
+     main = "Posterior distribution of θ",
+     xlab = "θ")
+```
+
+The posterior distribution of $\theta$ is $\text{Gamma}(\alpha_n=60, \beta_n=12)$, with posterior mean $\frac{\alpha_n}{\beta_n} = 5$
+
+The histogram above shows the posterior density based on 10,000 simulated draws.
+
+Both results are almost identical, and they show that the chance of average weekly demand being greater than 8 is extremely small given the data.
+
+## Problem 3b Posterior Predictive
+
+Predict new observation using Negative Binomial.
+
+```{r}
+# Predictive distribution parameters for NB in R
+r    <- alpha_n
+prob <- beta_n / (beta_n + 1)  # 12/13
+
+# Monte Carlo simulation from the posterior predictive
+xpred <- rnbinom(10000, size = r, prob = prob)
+
+# Plot an empirical predictive PMF (bar plot of simulated draws)
+op <- par(mar = c(4,4,2,1))
+brks <- 0:max(15, ceiling(quantile(xpred, 0.999)))
+tb   <- table(factor(xpred, levels = brks))
+barplot(tb / sum(tb),
+        names.arg = brks,
+        las = 2,
+        xlab = "x",
+        ylab = "Predictive probability",
+        main = "Posterior predictive PMF of X_{11}")
+par(op)
+
+```
+
+The Monte Carlo and exact results agree closely.
+
+## Problem 3c Decision Making
+
+```{r}
+# Posterior predictive: NB(size=r, prob=beta_n/(beta_n+1))
+r    <- alpha_n
+prob <- beta_n / (beta_n + 1)
+
+xpred <- rnbinom(10000, size = r, prob = prob)  # common random numbers
+
+# Profit function
+U <- function(X, a) 10 * pmin(X, a) - 7 * pmax(0, a - X)
+
+# Evaluate expected profit on a grid of candidate order quantities
+A_grid <- 0:20
+EU <- sapply(A_grid, function(a) mean(U(xpred, a)))
+
+# Find the maximizer
+opt_idx <- which.max(EU)
+a_11  <- A_grid[opt_idx]
+EU_star <- EU[opt_idx]
+
+# Plot Expected Profit vs a
+plot(A_grid, EU, type = "b", pch = 19,
+     xlab = "Order quantity a",
+     ylab = "Expected profit  E[U(X,a) | data]",
+     main = "Expected profit vs. order quantity")
+abline(v = a_11, col = "red", lwd = 2, lty = 2)
+text(a_11, EU_star, labels = paste0("  a* = ", a_11), pos = 4, col = "red")
+
+# (Optional) Newsvendor critical fractile sanity check:
+# Underage cost c_u = 10, overage cost c_o = 7
+crit <- 10 / (10 + 7)                 # 0.588...
+q_nb <- qnbinom(crit, size = r, prob = prob)
+
+# Nice printed outputs
+cat("Optimal order a_11 =", a_11, "   Expected profit ≈", round(EU_star, 2), "\n")
+cat("Predictive quantile at critical fractile (10/(10+7)) =", crit,
+    " → q =", q_nb, "\n")
+
+```
+
+# Problem 4 Bayesian Linear Regression
+
+## Problem 4a Prior Checks
+
+Simulate regression curves from prior, adjust hyperparameters for realism.
+
+We consider the quadratic regression model
+
+$$ temp_i=\beta_0+\beta_1\cdot time_i+\beta_2\cdot time_i^2+\varepsilon_i $$
+
+$$ \varepsilon_i\overset{\text{iid}}{\sim}N(0,\sigma^2) $$
+
+A conjugate prior is assumed
+
+$$ \beta|\sigma^2\sim N(\mu_0,\sigma^2\Omega_0^{-1}), \sigma^2\sim \mathrm{Inv}-\chi^2(\nu_0,\sigma_0^2) $$
+
+$$ \beta=(\beta_0,\beta_1,\beta_2)^\top $$
+
+The initial hyperparameters are chosen as
+
+$$ \mu_0=(-10,100,-100)^\top,\Omega_0=0.01I_3, \nu_0=3, \sigma^2_0=1 $$
+
+$\nu_0$ reflects prior beliefs about the shape of the seasonal temperature curve, $\Omega_0$ controls the uncertainty around these prior means, $\nu_0$ and $\sigma^2_0$ specify the scaled inverse-chi-square prior for $\sigma^2$, which is weakly informative with mean around 1. These hyperparameter settings express a reasonable prior belief that temperature follows a quadratic trend over time: winter is colder, summer is the hottest, and then fall cools down.
+
+To evaluate whether these priors generate reasonable regression curves, we simulate from the joint prior distribution:
+
+1.  Draw $\sigma^2\sim \mathrm{Inv}-\chi^2(\nu_0,\sigma_0^2)$.
+
+2.  Given $\sigma^2$, draw $\beta\sim N(\mu_0,\sigma^2\Omega_0^{-1})$.
+
+3.  For each draw, compute the regression function
+
+    $$ f(t)=\beta_0+\beta_1t+\beta_2t^2, t\in[0,1] $$
+
+4.  Overlay the simulated curves to check if they are reasonable
+
+```{r}
+'echo = False'
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+install.packages("remotes")
+library(remotes)
+install.packages("mvtnorm")
+library(mvtnorm)
+install_github("StatisticsSU/SUdatasets")
+library(SUdatasets)
+head(tempLinkoping)
+# Gumbel Distribution
+rgumbel <- function(n, mu=0, b=1) {
+  u <- runif(n); return(mu - b * log(-log(u)))
+}
+# Laplace Distribution
+rlaplace <- function(n, mu=0, sigma=1) {
+  u <- runif(n) - 0.5; return(mu - sigma * sign(u) * log(1 - 2 * abs(u)))
+}
+# Logit-Normal Distribution
+rlogitnorm <- function(n, mu, sigma) {
+  x_val <- rnorm(n, mean = mu, sd = sigma); return(exp(x_val) / (1 + exp(x_val)))
+}
+```
+
+```{r}
+# load dataset
+data(tempLinkoping)
+time <- tempLinkoping$time
+n <- length(time)
+
+# prior hyperparameters
+mu0 <- c(-10, 100, -100)
+Omega0 <- 0.01 * diag(3)
+nu0 <- 3
+sigma2_0 <- 1
+
+# scaled-inv-chi2
+rScaledInvChi2 <- function(n, v_0, sigma2_0){
+  return((v_0 * sigma2_0) / rchisq(n, df = v_0))
+}
+
+set.seed(123)
+nDraws <- 100
+sigma2_prior <- rScaledInvChi2(nDraws, nu0, sigma2_0)
+
+beta_prior <- matrix(NA, nrow = nDraws, ncol = 3)
+valid <- rep(FALSE, nDraws)
+
+for(i in 1:nDraws){
+  Sigma <- sigma2_prior[i] * solve(Omega0)
+  if(all(is.finite(Sigma)) && min(eigen(Sigma, symmetric=TRUE)$values) > 0){
+    beta_prior[i,] <- rmvnorm(1, mean = mu0, sigma = Sigma)
+    valid[i] <- TRUE
+  }
+}
+
+# plot
+plot(time, tempLinkoping$temp, pch = 20,
+     xlab = "time (scaled days)", ylab = "temperature",
+     main = "Prior predictive regression curves (given hyperparameters)")
+
+for(i in which(valid)){
+  curve(beta_prior[i,1] + beta_prior[i,2]*x + beta_prior[i,3]*x^2,
+        from = 0, to = 1, add = TRUE, col = rgb(1,0,0,0.3))
+}
+```
+
+Using the hyperparameters provided in the problem to perform prior simulations results in a set of regression curves as shown in the figure. It can be seen that many curves suggest temperature ranges within a year that are too extreme (below −15°C or above 25°C), which is inconsistent with our intuitive understanding of how Sweden's temperatures vary seasonally. This indicates that the hyperparameters given in the problem lead to overly dispersed and unrealistic prior distributions, and are therefore unreasonable. A prior that better matches actual climate patterns needs to be set.
+
+The approach to adjusting hyperparameters:
+
+1.  $\mu_0$ : In Sweden, the temperature in 2016 ranged approximately from -10°C to +20°C, and the regression curve should be unimodal. We can set $\mu_0 = (-2, 70, -70)$to keep the constant term within a reasonable range and limit the quadratic term from being too large.
+2.  $\Omega_0$: The original value $0.01I$ makes the variance too large. The precision can be increased, for example $\Omega_0 = I$ to make the coefficient fluctuate less.
+3.  $\nu_0$: The original value is 3, the degree of freedom is too small, thus $\sigma^2$ is too dispersed. We can set $\nu_0 = 20$ to make the prior more concentrated on the noise variance.
+4.  $\sigma_0^2$: Make it 7 instead of 1, to keep the temperature curve fluctuations within a reasonable range.
+
+```{r}
+# adjusted hyperparameters
+mu_0 <- c(-2, 70, -70)        
+Omega_0 <- 1 * diag(3)    
+nu_0 <- 20                   
+sigma2_0 <- 7         
+
+# regression curves
+set.seed(123)
+n_curves <- 50
+time_seq <- seq(0, 1, length.out = 100)
+
+regression_curves <- matrix(NA, nrow = n_curves, ncol = length(time_seq))
+
+# plot
+plot(0, 0, type = "n", xlim = c(0, 1), ylim = c(-15, 25),
+     xlab = "time (scaled days)", ylab = "Temperature (°C)",
+     main = "Adjusted Prior Predictive Regression Curves")
+
+for(i in 1:n_curves) {
+  sigma2 <- rScaledInvChi2(1, nu_0, sigma2_0)
+  beta <- rmvnorm(1, mean = mu_0, sigma = sigma2 * solve(Omega_0))
+  
+  regression_curve <- beta[1] + beta[2] * time_seq + beta[3] * time_seq^2
+  regression_curves[i, ] <- regression_curve
+  
+  lines(time_seq, regression_curve, 
+        col = rgb(0.2, 0.4, 0.8, 0.4), lwd = 1)
+}
+
+# add guide line
+abline(h = c(-10, 0, 10, 20), lty = 2, col = "gray")
+abline(v = c(0.25, 0.5, 0.75), lty = 2, col = "gray")
+
+# add mean curve
+mean_curve <- colMeans(regression_curves)
+lines(time_seq, mean_curve, col = "red", lwd = 3)
+
+# add legend
+legend("topright", 
+       legend = c("Individual prior curves", "Average prior curve"),
+       col = c(rgb(0.2, 0.4, 0.8, 0.3), "red"),
+       lwd = c(1, 3), bty = "n")
+```
+
+To validate the chosen prior, 50 samples were drawn from the joint prior distribution of $( \beta, \sigma^2)$. For each sample, the corresponding regression curve was computed and plotted over the domain time. The resulting collection of curves, shown in the figure, was assessed for consistency with plausible real-world temperature behavior:
+
+Realistic Temperature Range: The curves span a plausible range of approximately -12°C to 23°C, effectively capturing the cold winters and mild summers characteristic of the Linköping climate.
+
+Accurate Seasonal Pattern: All curves exhibit a downward-opening shape with peaks consistently located around midsummer and troughs in the winter, which correctly models the annual temperature cycle.
+
+Controlled Variability: The curves show a reasonable degree of variability, reflecting uncertainty about the exact shape of the relationship without exhibiting implausibly extremes.
+
+In conclusion, this prior successfully incorporate relevant domain knowledge about seasonal temperature variations while remaining sufficiently flexible for the data to update our beliefs. It therefore provides a robust and defensible starting point for the following analysis.
+
+## Problem 4b Posterior Curves
+
+Calculate conjugate posterior, plot curves and 95% Cls.
+
+```{r}
+library(SUdatasets)  
+library(MASS)      
+library(mvtnorm)       
+data("tempLinkoping")
+
+y <- tempLinkoping$temp
+time <- tempLinkoping$time
+
+# Construct Design Matrix for Quadratic Regression
+X <- cbind(1, time, time^2)
+
+# Prior hyperparameters (adjusted from 4a)
+mu_0 <- c(-2, 70, -70)         
+Omega_0 <- 1 * diag(3)      
+nu_0 <- 20                      
+sigma2_0 <- 7      
+```
+
+Computing Posterior Hyperparameters
+
+From Bayesian linear regression with conjugate priors:
+
+$$\beta \mid \sigma^2, y \sim \mathcal{N}(\mu_n, \sigma^2 \Omega_n^{-1})$$
+
+$$\sigma^2 \mid y \sim \text{Inv-}\chi^2(\nu_n, \sigma_n^2)$$
+
+Where: $$\Omega_n = \Omega_0 + X^\top X$$
+
+$$\mu_n = \Omega_n^{-1} (\Omega_0 \mu_0 + X^\top y)$$
+
+$$\nu_n = \nu_0 + n$$
+
+$$\sigma_n^2 = \frac{ \nu_0 \sigma_0^2 + (y - X\mu_n)^\top (y - X\mu_n) + (\mu_0 - \mu_n)^\top \Omega_0 (\mu_0 - \mu_n) }{\nu_n}$$
+
+```{r}
+# Compute Posterior Hyperparameters
+n <- length(y)
+p <- ncol(X)
+
+Omega_n <- Omega_0 + t(X) %*% X
+mu_n <- solve(Omega_n) %*% (Omega_0 %*% mu_0 + t(X) %*% y)
+nu_n <- nu_0 + n
+
+sigma_n2 <- as.numeric(
+  (nu_0 * sigma2_0 + sum(y^2) + 
+     t(mu_0) %*% Omega_0 %*% mu_0 - t(mu_n) %*% Omega_n %*% mu_n) / nu_n
+)
+```
+
+```{r}
+# scaled inverse chi-square distribution
+rScaledInvChi2 <- function(n, v_0, sigma2_0) {
+  return((v_0 * sigma2_0) / rchisq(n, df = v_0))
+}
+
+# Simulate from Joint Posterior
+n_samples <- 10000
+sigma2_samples <- rScaledInvChi2(n_samples, nu_n, sigma_n2)
+
+beta_samples <- matrix(0, nrow = n_samples, ncol = p)
+
+for (i in 1:n_samples) {
+  beta_samples[i, ] <- rmvnorm(1, mean = mu_n, 
+                               sigma = sigma2_samples[i] * solve(Omega_n))
+}
+
+# Save posterior samples for later analysis
+posterior_samples <- list(
+  beta = beta_samples,
+  sigma2 = sigma2_samples
+)
+```
+
+Plotting the Marginal posterior histograms for each parameter
+
+```{r}
+par(mfrow = c(2, 2))  
+
+hist(posterior_samples$beta[,1], main = expression(beta[0]),
+     xlab = expression(beta[0]), breaks = 30)
+
+hist(posterior_samples$beta[,2], main = expression(beta[1]),
+     xlab = expression(beta[1]), breaks = 30)
+
+hist(posterior_samples$beta[,3], main = expression(beta[2]),
+     xlab = expression(beta[2]), breaks = 30)
+
+hist(posterior_samples$sigma2, main = expression(sigma^2),
+     xlab = expression(sigma^2), breaks = 30)
+
+```
+
+Posterior regression curve + credible intervals
+
+```{r}
+time_grid <- seq(min(time), max(time), length.out = 100)
+pred_samples <- matrix(0, nrow = n_samples, ncol = length(time_grid))
+
+for (i in 1:n_samples) {
+  pred_samples[i, ] <- posterior_samples$beta[i, 1] +
+    posterior_samples$beta[i, 2] * time_grid +
+    posterior_samples$beta[i, 3] * time_grid^2
+}
+
+pred_median <- apply(pred_samples, 2, median)
+pred_lower <- apply(pred_samples, 2, quantile, probs = 0.025)
+pred_upper <- apply(pred_samples, 2, quantile, probs = 0.975)
+```
+
+Plot Bayesian Regression curve + posterior median + credible intervals
+
+```{r}
+par(mfrow = c(1, 1))  
+
+plot(time, y,main = "Bayesian Quadratic Regression",
+     col = rgb(0, 0, 0, alpha = 0.4), xlab = "Time", ylab = "Temperature",pch = 16)
+
+lines(time_grid, pred_median, col = "darkblue", lwd = 2)
+lines(time_grid, pred_lower, col = "darkred", lty = 2)
+lines(time_grid, pred_upper, col = "darkred", lty = 2)
+
+legend("bottomright", 
+       legend = c("Posterior median regression curve",
+                  "Lower 2.5% credible interval", "Upper 97.5% credible interval"),
+        col = c("darkblue", "darkred", "darkred"), 
+       lwd = c(2, 1, 1), 
+       lty = c(1, 2, 2))
+
+```
+
+Conclusion : No, the interval bands do not contain most of the data points. That means the credible band does not automatically cover most of raw data points because it doesn’t account for noise $\sigma^2$ in the same way a prediction interval would.
+
+```{r, eval = FALSE}
+# Q4: Regression: normal approximation for posterior
+
+# Q4.1 plot the marginal posterior for coefficients
+# 1. Define the log posterior function
+logPostReg <- function(param, y, X){
+  p <- ncol(X)
+  beta <- param[1:p]
+
+ # 1.1 extra unkown params(get from param[])
+log_extrapara <- param[p+1]
+extrapara <- exp(log_extrapara)
+  # if known
+extrapara <- n
+ 
+ # 1.2 linear predictor
+linear_pred <- X %*% beta
+  # gamma/poisson
+  mu <- exp(X %*% beta)
+  # beta/bernoulli
+  mu <- exp(X %*% beta) / (1 + exp(X %*% beta))
+
+ # 1.3 log likelihood(from package)
+  logLik <- sum(dpois(y, lambda = , log = TRUE))
+ 
+  # 1.4 log prior:beta~N(0,10^2I)
+  logPrior <- dmvnorm(beta, mean = rep(0, p), sigma = 100 * diag(p), log = TRUE)
+  extrapara_logPrior <- dnorm()
+  
+  return(logLik + logPrior)
+}
+
+# 2. run Optim
+initVal <- rep(0, ncol(X))
+OptimRes <- optim(initVal, logPostReg, gr=NULL, y=y, X=X,
+                  method = "BFGS", control = list(fnscale=-1), hessian = TRUE)
+
+# 3. get results
+postMode <- OptimRes$par
+postCov <- solve(-OptimRes$hessian)
+postStd <- sqrt(diag(postCoV))
+
+# 4. plot the marginal posterior - one para
+print(colnames(X))
+idx <- 1 # beta_0/intercept...
+
+idx <- 4 # beta_3
+grid_val <- seq(postMode[idx] - 4*postStd[idx], postMode[idx] + 4*postStd[idx], length = 100)
+
+plot(grid_val, dnorm(grid_val, mean=postMode[idx], sd=postStd[idx]), type="l",
+     main=paste("Marginal Posterior of Parameter", idx),xlab = "Value", ylab = "Density")
+
+# 4. plot the marginal posterior - all para
+par(mfrow = c(2,3))
+for(i in 1:length(postMode)){
+  var_name <- tryCatch(colnames(X)[i], error=function(e) paste("Beta", i))
+  if(is.na(var_name)) var_name <- paste("Param", i)
+  grid_val <- seq(postMode[i] - 4*postStd[i],
+                  postMode[i] + 4*postStd[i], length=100)
+  plot(grid_val, dnorm(grid_val, mean=postMode[i], sd=postStd[i]),
+       type="l", lwd=2, col="blue",
+       main = var_name, xlab = "Value", ylab = "Density")
+  abline(v=0, col="red", lty=2)
+}
+par(mfrow = c(1,1))
+```
+
+No, the credible intervals are not meant to contain all data points. They represent uncertainty in the estimated regression function. If we want a band that covers 95% of the data points then we need a 95% predictive interval, not a credible interval.
+
+## Problem 4c Optimization Analysis
+
+```{r}
+colnames(beta_samples) <- c("b0","b1","b2")
+
+# Compute x-tilde for each draw; valid only if parabola opens downward (b2 < 0)
+x_tilde <- ifelse(beta_samples[,"b2"] < 0,
+                  -beta_samples[,"b1"]/(2*beta_samples[,"b2"]), NA_real_)
+
+# Keep maxima that fall inside the observed year (time scaled in [0,1])
+inside <- !is.na(x_tilde) & x_tilde >= 0 & x_tilde <= 1
+x_tilde_in <- x_tilde[inside]
+
+# Convert to day of year (leap year: 366 days)
+day_tilde_in <- round(x_tilde_in * 366)
+
+# Posterior probabilities 
+P_parabola_has_max  <- mean(beta_samples[,"b2"] < 0)        # Pr(b2<0)
+P_max_inside_0_1    <- mean(inside)                 # Pr(max exists & in [0,1])
+x_tilde_q           <- quantile(x_tilde_in, probs = c(0.025,0.5,0.975), 
+                                na.rm = TRUE)
+day_tilde_q         <- quantile(day_tilde_in, probs = c(0.025,0.5,0.975),
+                                na.rm = TRUE)
+
+
+cat("Pr(parabola has a maximum) = ", round(P_parabola_has_max,3), "\n")
+cat("Pr(maximum occurs within the year) = ", round(P_max_inside_0_1,3), "\n")
+cat("x_tilde (time in [0,1]) 2.5%, 50%, 97.5% = ",
+    paste(round(x_tilde_q,3), collapse = ", "), "\n")
+cat("Day of year (1..366) 2.5%, 50%, 97.5% = ",
+    paste(as.integer(day_tilde_q), collapse = ", "), "\n")
+
+par(mfrow=c(1,2), mar=c(4,4,2,1))
+hist(x_tilde_in, breaks = 40, freq = FALSE,
+     main = expression("Posterior of " * tilde(x) * " (time in [0,1])"),
+     xlab = expression(tilde(x)))
+abline(v = x_tilde_q[2], col = "red", lwd = 2, lty = 2)
+
+hist(day_tilde_in, breaks = 40, freq = FALSE,
+     main = "Posterior of day with max expected temp",
+     xlab = "Day of the leap year")
+abline(v = day_tilde_q[2], col = "red", lwd = 2, lty = 2)
+par(mfrow=c(1,1))
+```
+
+The posterior analysis shows that the quadratic regression curve almost certainly has a maximum within the year ($\Pr(\beta_2<0)=1$ and $\Pr(\tilde{x}\in[0,1])=1$).
+
+The posterior distribution of the time of maximum is:
+
+Scaled time: median $\tilde{x}=0.55$ with 95% CI $(0.54,\,0.56)$.
+
+Calendar day: median $\approx 200$ (late July) with 95% CI $(197,\,204)$.
+
+Thus, the warmest day of the year is most likely around July 18–23, with high certainty about the timing.
+
+# Problem 5 Poisson Regression (Normal Approximation)
+
+## Problem 5a Finding Mode
+
+Define Log-posterior, use optim to find Mode and Hessian (Approx Covariance).
+
+```{r}
+library(mvtnorm)      # package with multivariate normal density
+library(latex2exp) 
+
+# data and prior parameters
+data = read.csv("https://github.com/mattiasvillani/BayesLearnCourse/raw/master/assignment/bugs.csv", 
+                header = TRUE)
+
+y = data$nBugs # response variable: the number of bugs,a vector with n = 91 observations
+X = data[,-1] # 91 x 5 matrix with covariates
+X = as.matrix(X) # X was initially a data frame, but we want it to be matrix
+head(X)       
+
+p = ncol(X)
+#mu = as.vector( rep(0,p))
+mu = rep(0,p)
+tou = 10
+sigma = tou^2 * diag(p)
+```
+
+Normal approximation
+
+1.  Log posterior density, $$ logp(\beta∣y,X) \propto logL(\beta∣y,X)+logp(\beta)$$ In poisson regression, rate parameter $\lambda_i$ is determined by the covariates ($X_i$) and the regression co-efficients ($\beta$)
+
+2.  Poisson Likelihood, $$y_i \sim \text{Poisson}(\lambda_i), \quad \lambda_i = \exp(x_i^\top \beta)$$
+
+3.  Log Likelihood, $$logL(\beta∣y,X) = \sum_{i=1}^{n}(\frac{\lambda_i ^ {y_i} e^{-\lambda_i}} {y_i !}) $$ $$ \log L(\beta \mid y, X) = \sum_{i=1}^{n} \left( y_i \log(\lambda_i) - \lambda_i - \log(y_i!) \right) $$ Substituting $\lambda_i = \exp(x_i^{\top} \beta)$ and dropping terms that don't depend on $\beta$, $$ \log L(\beta \mid y, X) \propto \sum_{i=1}^{n} \left( y_i x_i^{\top} \beta - \exp(x_i^{\top} \beta) \right) $$ Multivariate Normal Prior, $$\beta \sim N(0, \tau^2 I_p)$$
+
+4.  Log-prior, $$\log p(\beta) \propto - \frac{1}{2} \beta^\top (\tau^2 I_p)^{-1} \beta$$
+
+5.  Log Posterior,
+
+$$ log p(\beta \mid y, X) \propto \sum_{i=1}^{n} \big( y_i x_i^\top \beta - \exp(x_i^\top \beta) \big) - \frac{1}{2} \beta^\top (\tau^2 I_p)^{-1} \beta $$
+
+```{r}
+log_posterior_density <- function(beta) {
+  linear_predictor <- X %*% beta
+  lambda = exp(linear_predictor)
+# Log-likelihood
+  log_likelihood <- sum(y * linear_predictor - lambda)
+# log prior
+  log_prior <- dmvnorm(beta,mu,sigma,log = TRUE)
+  return (log_likelihood + log_prior)
+}
+```
+
+Numerical Optimization
+
+1.  Posterior Mode ($\tilde{\beta}$)
+
+To find the maximum of posterior density function , i.e, to find the mode $\tilde{\beta}$.
+
+Finding the mode of the posterior distribution (the MAP estimate) using numerical optimization,
+
+$$\tilde{\beta} = \arg\max_\beta \; \log p(\beta \mid y, X)$$ The Hessian matrix of the log-posterior at the mode,
+
+$$H(\tilde{\beta}) = \frac{\partial^2}{\partial \beta \, \partial \beta^\top} \log p(\beta \mid y, X) \bigg|_{\beta = \tilde{\beta}}$$
+
+2.  Observed Information
+
+The observed information is the negative of the Hessian,
+
+$$J_{\text{observed}}(\tilde{\beta}) = - H(\tilde{\beta})$$ 3. Posterior Covariance Approximation
+
+According to Laplace approximation, the posterior is approximately multivariate normal around its mode,
+
+$$\beta \mid y, X \approx N(\tilde{\beta}, \Sigma_{\text{approx}})$$
+
+Covariance is the inverse of the observed information,
+
+$$\Sigma_{\text{approx}} = J_{\text{observed}}(\tilde{\beta})^{-1} = \big(-H(\tilde{\beta})\big)^{-1}$$ 4. Approximate Posterior Mean
+
+$$\mu_{\text{approx}} = \tilde{\beta}$$
+
+```{r}
+#install.packages("optimx")
+
+library(optimx)
+library(numDeriv)
+
+beta_0 <- rep(0,p)
+# maximixe the function
+optim_maximize <- optim(par = beta_0, fn = log_posterior_density,
+                        method = "BFGS", control= list(fnscale = -1) )
+
+beta_mode <- optim_maximize$par
+#beta_mode
+
+# covariance matrix : second derivative of log posterior
+# The covariance matrix is the inverse of the negative Hessian (Observed Information).
+hessian_matrix <- hessian(func = log_posterior_density, x = beta_mode)
+
+# observed information
+j_observed <- -hessian_matrix
+
+# covariance matrix
+# sigma_approximate <- j_observed ^ -1
+sigma_approximate <- solve(j_observed)
+
+
+# Approximate Mean Vector (mu_approx)
+names(beta_mode) <- colnames(X)
+mu_approx <- beta_mode
+print(" Approximate Posterior Mean (Mode)")
+print(mu_approx)
+
+# Approximate Covariance Matrix (Sigma_approx)
+rownames(sigma_approximate) <- colnames(X)
+colnames(sigma_approximate) <- colnames(X)
+print("Approximate Posterior Covariance Matrix ")
+print(sigma_approximate)
+```
+
+```{r, eval = FALSE}
+# Q4.2 predictive distribution
+nSim <- 1000
+betaDraws <- rmvnorm(nSim, mean = postMode, sigma = postCov)
+
+yPred <- numeric(nSim)
+xTilde <- c(1, )
+
+for(i in 1:nSim){
+  beta_i <- betaDraws[i,]
+  # extra para if there is
+  # sigma_i <- sqrt(postDraws$sigma2Sample[i])
+  # alpha_i <- n
+  # phi_i <- n
+  lin_pred <- as.numeric(xTilde %*% beta_i)
+# A. Normal/Gaussian-linear(y can be negative)
+  mu_val <- lin_pred
+  yPred[i] <- rnorm(1, mean = mu_val, sd = sigma_i)
+# B. Poisson-counting(y must be positive)
+  mu_val <- exp(lin_pred)
+  yPred[i] <- rpois(1, lambda = mu_val)
+# C. Gamma-normal(y must be positive)
+  mu_val <- exp(lin_pred)
+  yPred[i] <- rgamma(1, shape = alpha_i, rate = alpha_i / mu_val)
+# D. Beta(y is %)
+  mu_val <- exp(lin_pred) / (1 + exp(lin_pred))
+  yPred[i] <- rbeta(1, shape1 = mu_val * phi_i, shape2 = (1 - mu_val) * phi_i)
+# E. Binomial/Logistc(y is %)
+  prob_val <- exp(lin_pred) / (1 + exp(lin_pred))
+  yPred[i] <- rbinom(1, size = 1, prob = prob_val)
+}
+
+# plot
+hist(yPred, main="Predictive Distribution", col = "blue", border = "white")
+```
+
+## Problem 5b Bayesian Significance
+
+Calculate 95% intervals for coefficients, check if 0 is included.
+
+By using the approximate posterior mean (mu_approx) and covariance matrix (Sigma_approx), Calculating the 95% Equal-Tail Credible Intervals for each ${\beta_j}$ Perform the Bayesian "Significance" test, check ${\beta_j} = 0$ is included in the interval.
+
+Plot and summarize each marginal posterior of $\beta_j (for j = 1,....,5)$normal approximation: $$\beta \mid y \approx N(\mu_{\text{approx}}, \Sigma_{\text{approx}})$$
+
+```{r}
+{r, fig.width=10, fig.height=8}
+# Calculating posterior mean and standard deviation
+posterior_mean <- mu_approx
+posterior_sd <- sqrt(diag(sigma_approximate))
+
+z_score_95 <- qnorm(0.975) 
+
+# Computing 95% credible interval
+lower_bound <- posterior_mean - z_score_95 * posterior_sd
+upper_bound <- posterior_mean + z_score_95 * posterior_sd
+
+# create a table
+posterior_summary <- base::data.frame(
+  Mean = posterior_mean,
+  SD = posterior_sd,
+  Lower95 = lower_bound,
+  Upper95 = upper_bound,
+  IncludesZero = (lower_bound < 0 & upper_bound > 0)
+)
+
+# apply the labels "Significant" or "Not Significant" based on IncludesZero column
+posterior_summary$Significance_test <- ifelse(
+    posterior_summary$IncludesZero, 
+    "Not Significant", 
+    "Significant"
+)
+
+print(posterior_summary)
+
+# Plotting the (approximate) marginal posterior distribution
+
+par(mfrow = c(2,3))
+for (i in 1:p){
+   x_values <- seq(posterior_mean[i] - 4*posterior_sd[i],
+                posterior_mean[i] + 4*posterior_sd[i],
+                length.out = 200)
+   y_values <- dnorm(x_values, mean = posterior_mean[i], sd = posterior_sd[i])
+   plot(x_values, y_values, col = "skyblue",type = "l", lwd = 2, 
+        main = paste("Posterior of beta", colnames(X)[i]),
+        xlab = expression(beta), ylab = "Density",xlim = range(c(x_values, 0)))
+   abline(v = 0, col = "indianred",lty = 2 )
+}
+
+```
+
+Conclusion : From the marginal posterior distributions and 95% credible intervals:
+
+1.  Significant predictors: intercept, propC, propJava, and complexity. For these coefficients, 0 lies outside or near the extreme tails of the posterior distribution, and IncludesZero = "FALSE", indicating strong evidence of an effect on the number of bugs.
+2.  Non-significant predictor: nCommits. The red line at 0 is near the peak of the posterior distribution, and IncludesZero = "TRUE", showing that 0 is plausible and there is weak or no evidence for an effect.
+
+# Problem 6 MCMC Implementation
+
+## Problem 6a RWM Sampler
+
+Code the MH algorithm function:
+
+The implementation requires two main mathematical steps: defining the target log-posterior density and calculating the Metropolis acceptance probability.
+
+The M-H algorithm only requires the unnormalized target density, which is proportional to the likelihood times the prior : $p(β∣\mathbf{y},\mathbf{X})∝p(\mathbf{y}∣β,\mathbf{X})p(β)$. We work on the log scale:
+
+$$ logp(\beta|\mathbf{y},\mathbf{X})\propto logL(\mathbf{y}|\beta,\mathbf{X})+log p(\beta) $$
+
+1.  Poisson Regression Log-Likelihood Core:
+
+    For the Poisson model $Y_i|\mathbf{x}_i\sim Poisson(\lambda_i=exp(\mathbf{x}_i^{\top} \beta))$ :
+
+    $$ logL(\mathbf{y}|\beta,\mathbf{X})\propto \sum_{i=1}^{n}[y_i(\mathbf{x}_i^{\top}\beta)-exp(\mathbf{x}_i^{\top}\beta)] $$
+
+2.  $N(0,\tau^2I_p)$ Log-Prior Core( $\tau$ =10):
+
+    $$ logp(\beta)\propto -\frac{1}{2\tau^2}\sum_{j=1}^{2}\beta_j^2 $$
+
+The RWM uses a symmetric proposal distribution $q(\beta^*|\beta^{(t-1)})=N(\beta^(t-1),c\sum)$. Because the proposal is symmetric, the M-H acceptance ratio simplifies as:
+
+$$ \alpha = \min \left\{ 1, \frac{p(\beta^* | \mathbf{y}, \mathbf{X})}{p(\beta^{(t-1)} | \mathbf{y}, \mathbf{X})} \right\} $$
+
+In the log domain, this ensures numerical stability:
+
+$$ \log(\alpha) = \min \left\{ 0, \log p(\beta^* | \mathbf{y}, \mathbf{X}) - \log p(\beta^{(t-1)} | \mathbf{y}, \mathbf{X}) \right\} $$
+
+The candidate $\beta^*$ is accepted if log(U) \< log(α), where $U \sim Uniform(0,1)$, otherwise the chain remains at $\beta^{(t-1)}$.
+
+The Random Walk Metropolis sampler is implemented to generate samples from the posterior distribution of the Poisson regression parameters when direct sampling is infeasible:
+
+```{r}
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+#install.packages("mvtnorm")
+library(mvtnorm)
+
+RWMsampler <- function(logPostFunc, initVal, nSim, nBurn, Sigma, c, ...) {
+  p <- length(initVal)
+  theta <- matrix(NA, nrow = nSim + nBurn, ncol = p)
+  theta[1, ] <- initVal
+  accept_count <- 0
+  
+  for (t in 2:(nSim + nBurn)) {
+     current <- theta[t - 1, ]
+    # Generate candidate from proposal distribution
+    candidate <- as.vector(rmvnorm(1, mean = current, sigma = c * Sigma))
+    
+    # Calculate acceptance probability (log scale)
+    log_alpha <- logPostFunc(candidate, ...) - logPostFunc(current, ...)
+    
+    # Accept/reject candidate
+    if (log(runif(1)) < log_alpha) {
+      theta[t, ] <- candidate
+      accept_count <- accept_count + 1
+    } else {
+      theta[t, ] <- current
+    }
+  }
+  
+  # Return samples after burn-in
+  posterior_draws <- theta[(nBurn + 1):(nSim + nBurn), ]
+  cat("Acceptance rate:", round(accept_count/(nSim + nBurn - 1), 3), "\n")
+  return(posterior_draws)
+}
+```
+
+```{r, eval = FALSE}
+# Q3A Metropolis-Hastings(RWM)
+# 1.LogPost(theta, data_y)
+# 2.Define RWM sampler function
+RWMsampler <- function(logPostFunc, initVal, nSim, nBurn, Sigma, c, ...) {
+  p <- length(initVal)
+  thetaDraws <- matrix(NA, nSim, p)
+  theta <- initVal
+  accRate <- 0
+  
+  for (i in 1:nSim){
+    thetaProp <- as.vector(rmvnorm(1, mean = theta, sigma = c * Sigma))
+    logPostProp <- logPostFunc(thetaProp, ...)
+    logPostCurr <- logPostFunc(theta, ...)
+    logAlpha <- logPostProp - logPostCurr
+    
+    if (log(runif(1)) < logAlpha) {
+      theta <- thetaProp
+      accRate <- accRate + 1
+    }
+    thetaDraws[i, ] <- theta
+  }
+  if(nBurn > 0) thetaDraws <- thetaDraws[-(1:nBurn), , drop=FALSE]
+  
+  cat("Acceptance Rate:", accRate/nSim, "\n") 
+  return(thetaDraws)
+}
+# 3.set parameters and run
+nSim <- 2000
+nBurn <- 500
+initVal <- 0   # more than 1 para c(0,0,...)
+Sigma <- 1    # multi-dimension diag(p)
+c_tune <- 1.0 # acceptance rate(0.3-0.4), <0.1,c <- smaller, >0.6,c <- bigger
+draws <- RWMsampler(logPostFunc = logPost, initVal = initVal, nSim = nSim, nBurn = nBurn, Sigma = Sigma, c = c_tune, data_y = data_y)
+
+# 4.results analysis
+plot(draws, type = "l", main = "Trace Plot")
+acf(draws)
+postMean <- mean(draws)
+cat("Posterior Mean:", postMean, "\n")
+```
+
+The function returns an $nSim \times p$ matrix of posterior samples and displays the acceptance rate for diagnostic purposes.
+
+Function parameters:
+
+1.  ***logPostFunc*** : computes log-posterior density
+2.  ***Sigma*** : proposal covariance matrix
+3.  ***c*** : scaling constant for step size control
+4.  ***nBurn*** : burn-in iterations to discard
+5.  ***nSim*** : posterior samples to retain
+
+## Problem 6b Run Sampling
+
+Apply RWM to Poisson Regression, compare with Problem 5 results.
+
+From Problem 5a we have the following structure:
+
+Likelihood:
+
+$$ Y_i|\mathbf{x}_i \sim Poisson(\lambda_i) $$
+
+where
+
+$$ \lambda_i = exp(\mathbf{x}_i^{\top}\beta) = exp(\beta_0+\beta_1x_{i1}+\beta_2x_{i2}+\beta_3x_{i3}+\beta_4x_{i4}) $$
+
+Prior distribution:
+
+$$ \beta\sim N(0,\tau^2I_5) $$
+
+with $\tau = 10$ for weakly informative prior.
+
+The unnormalized log-posterior is:
+
+$$ \log p(\beta \mid \mathbf{y}, X) = \underbrace{\sum_{i=1}^{91} \left[y_i(\mathbf{x}_i^\top \beta) - \exp(\mathbf{x}_i^\top \beta)\right]}_{\text{Log-likelihood}} - \underbrace{\frac{1}{2\tau^2}\beta^\top \beta}_{\text{Log-prior}} + \text{constant} $$
+
+```{r}
+{r, fig.width=10, fig.height=8}
+data <- read.csv("https://github.com/mattiasvillani/BayesLearnCourse/raw/master/assignment/bugs.csv", 
+                 header = TRUE)
+y <- data$nBugs
+X <- as.matrix(data[,-1])
+n <- nrow(X)
+p <- ncol(X)
+tau <- 10
+
+# log posterior function
+logPostFunc <- function(beta, X, y, tau){
+  eta <- X %*% beta
+  log_lambda <- eta
+  lambda <- exp(log_lambda)
+  
+  log_lik <- sum(y * log_lambda - lambda)
+  log_prior <- sum(dnorm(beta, 0, tau, log=TRUE))
+  
+  return(log_lik + log_prior)
+}
+
+# covariance matrix in Problem5
+fit_glm <- glm(y ~ X[,-1], family = poisson)
+beta_hat <- coef(fit_glm)
+
+lambda_hat <- exp(X %*% beta_hat)
+H <- t(X) %*% diag(as.vector(lambda_hat)) %*% X
+Sigma_post <- solve(H + diag(1/tau^2, p))
+
+# implement RWMsampler
+samples <- RWMsampler(
+  logPostFunc = logPostFunc,
+  initVal = rep(0, p),
+  nSim = 5000,
+  nBurn = 1000,
+  Sigma = Sigma_post,
+  c = 0.5,
+  X = X, y = y, tau = tau
+)
+
+# plot marginal posterior densities
+param_names <- colnames(X)
+par(mfrow = c(2,3))
+for (j in 1:p){
+  hist(samples[,j], 
+       main = paste("Posterior of", param_names[j]),
+       xlab = bquote(beta[.(j)]),
+       breaks = 30, col = "skyblue", border = "white")
+  abline(v = mean(samples[,j]), col = "red", lwd = 2)
+}
+
+# calculate 95% posterior interval
+post_summary <- apply(samples, 2, quantile, probs = c(0.025, 0.5, 0.975))
+colnames(post_summary) <- param_names
+print(post_summary)
+```
+
+The accepetance rate is 0.469 (falls between 0.2-0.5), indicating a good balance between exploration and acceptance. The posterior histograms show unimodal and roughly symmetric distributions for all β parameters. Posterior median and 95% credible intervals were computed for each β. The results are logically consistent: code complexity and language composition increase the expected number of bugs, while the number of commits shows no significant effect.
+
+In conclusion, the RWM sampler we created in Problem 6a provides stable posterior samples consistent with the normal-approximation results from Problem 5a, it captures the posterior uncertainty and produces reasonable parameter estimates that align with the expected behavior of the software-bugs data.
+
+## Problem 6c Convergence Diagnostics
+
+Trace plots, cumulative mean plots, multiple chains.
+
+Three criteria for judging convergence:
+
+1.  $\beta_j^{(t)}$ fluctuates around the stable range without obvious drift after a sufficiently long iteration.
+2.  Cumulative mean is stable.
+3.  Chains with different initialization values produce similar posterior means.
+
+```{r}
+# run two chains
+set.seed(123)
+samples_0 <- RWMsampler(logPostFunc, rep(0,p), 5000, 1000,
+                        Sigma_post, c=0.5, X=X, y=y, tau=tau)
+set.seed(321)
+samples_1 <- RWMsampler(logPostFunc, rep(1,p), 5000, 1000, 
+                        Sigma_post, c=0.5, X=X, y=y, tau=tau)
+
+# trace and cumulative mean plots
+param_names <- colnames(X)
+runningMean <- function(x) cumsum(x) / seq_along(x)
+
+for (j in 1:p) {
+  par(mfrow = c(2, 1), mar = c(3.5, 3.5, 2.5, 1), oma = c(0.5, 0.5, 1.5, 0.5))
+  
+  # trace plot
+  plot(samples_0[,j], type = "l", col = "red", lwd = 1.2,
+       main = paste("Trace plot of", param_names[j]),
+       xlab = "Iteration", ylab = expression(beta))
+  lines(samples_1[,j], col = "lightblue", lty = 2, lwd = 1.2)
+  legend("topright", legend = c("Init=0", "Init=1"),
+         col = c("red", "lightblue"), lty = 1:2, bty = "n")
+  
+  # mean plot
+  plot(runningMean(samples_0[,j]), type = "l", col = "red", lwd = 1.2,
+       main = paste("Running mean of", param_names[j]),
+       xlab = "Iteration", ylab = "Cumulative mean")
+  lines(runningMean(samples_1[,j]), col = "lightblue", lty = 2, lwd = 1.2)
+  legend("topright", legend = c("Init=0", "Init=1"),
+         col = c("red", "lightblue"), lty = 1:2, bty = "n")
+}
+
+# compare the posterior means for two chains
+means_0 <- colMeans(samples_0)
+means_1 <- colMeans(samples_1)
+comparison <- rbind(means_0, means_1)
+colnames(comparison) <- param_names
+print(round(comparison, 3))
+```
+
+The RWM sampler was run for 5000 iterations after 1000 burn-in draws, using the posterior covariance from the normal approximation and scaling constant c = 0.5. Two independent chains were started from $\beta = (0,0,0,0,0)$ and $\beta = (1,1,1,1,1)$.
+
+-   The trace plots for all parameters show stable, well-mixed behavior without noticeable trends, indicating that the Markov chains have reached their stationary distribution.
+
+-   The running-mean plots flatten quickly, confirming that posterior means have stabilized.
+
+-   The posterior means from the two chains are nearly identical, providing further evidence of convergence.
+
+Therefore, the RWM sampler appears to have converged properly, and the posterior inference from problem 6b can be considered reliable.
+
+## Problem 6d Proposal Efficiency
+
+Compare optimized covariance vs. identity matrix proposals. ESS
+
+Since $c=1$ and $\sum = I_p$, the proposal distribution is now:
+
+$$ \beta^*\sim N(\beta^{(t-1)}, I_p) $$
+
+```{r}
+# Run RWM with identity proposal
+set.seed(456)
+post_draws_identity <- RWMsampler(
+    logPostFunc = logPostFunc,
+    initVal = rep(0, p),
+    nSim = 5000,
+    nBurn = 1000,
+    Sigma = diag(p),  
+    c = 1,            
+    y = y,
+    X = X,
+    tau = tau
+)
+
+# compute effective samples
+compute_ess <- function(samples) {
+  n <- length(samples)
+  acf_vals <- acf(samples, plot = FALSE, lag.max = min(500, n-1))$acf
+  iat <- 1 + 2 * sum(acf_vals[-1])
+  return(n / iat)
+}
+
+# compare the performance of two proposed distrubitions
+mixing_comparison <- data.frame(
+  Parameter = param_names,
+  ESS_SigmaApprox = apply(samples, 2, compute_ess),
+  ESS_Identity = apply(post_draws_identity, 2, compute_ess)
+)
+
+mixing_comparison$Ratio <- round(mixing_comparison$ESS_Identity /
+                                   mixing_comparison$ESS_SigmaApprox, 2)
+
+print("Sigma_approx (6b) vs Identity (6d)")
+print(mixing_comparison)
+
+# overall comparison
+avg_ess_approx <- mean(mixing_comparison$ESS_SigmaApprox)
+avg_ess_identity <- mean(mixing_comparison$ESS_Identity)
+avg_ratio <- mean(mixing_comparison$Ratio)
+
+cat("\nOverall Performance Comparison:\n")
+cat("Average ESS - Sigma_approx (6b):", round(avg_ess_approx), "\n")
+cat("Average ESS - Identity (6d):", round(avg_ess_identity), "\n")
+cat("ESS Ratio (Identity/Sigma_approx):", round(avg_ratio, 2), "\n")
+
+# draw conclusion
+if (avg_ratio < 1) {
+  cat("\nCONCLUSION: WORSE\n")
+} else {
+  cat("\nCONCLUSION: BETTER\n")
+}
+
+# trace plot comparison
+for (j in 1:p) {
+  par(mfrow = c(2, 1), mar = c(3.5, 3.5, 2.5, 1), oma = c(0.5, 0.5, 1.5, 0.5))
+  
+  # trace plot - Problem 6b vs Problem 6d
+  plot(samples[, j], type = "l", col = "lightblue", lwd = 1.2,
+       main = paste("Trace plot of", param_names[j]),
+       xlab = "Iteration", ylab = expression(beta))
+  lines(post_draws_identity[, j], col = "red", lty = 2, lwd = 1.2)
+  legend("topright", legend = c("Sigma_approx (6b)", "Identity (6d)"),
+         col = c("lightblue", "red"), lty = 1:2, bty = "n")
+  
+  # mean plot - Problem 6b vs Problem 6d
+  runningMean <- function(x) {
+    cumsum(x) / seq_along(x)
+  }
+  
+  plot(runningMean(samples[, j]), type = "l", col = "lightblue", lwd = 1.2,
+       main = paste("Running mean of", param_names[j]),
+       xlab = "Iteration", ylab = "Cumulative mean")
+  lines(runningMean(post_draws_identity[, j]), col = "red", lty = 2, lwd = 1.2)
+  legend("topright", legend = c("Sigma_approx (6b)", "Identity (6d)"),
+         col = c("lightblue", "red"), lty = 1:2, bty = "n")
+}
+```
+
+Based on the computational results, we can draw the following detailed conclusions:
+
+The identity proposal shows significantly worse mixing performance compared to the normal approximation covariance matrix from Problem 6b. This is evidenced by:
+
+-   **Extremely low acceptance rate**: 0.2% indicates the proposal distribution is poorly calibrated.
+-   **Substantial ess reduction**: identity proposal achieves only 18% of the effective sample size compared to Sigma_approx.
+-   **Poor exploration**: the chain struggles to move efficiently through the parameter space.
+-   **Visual evidence**: the trace plots and running mean plots show that Sigma_approx chains with better mixing, faster convergence and lower autocorrelation, while the identity chains show slower mixing, higher autocorrelation and potential sticking behavior.
+
+The reason why the identity proposal performs poorly:
+
+-   **Ignored parameter correlations**: leads to proposing moves in directions that are unlikely under the posterior.
+
+-   **Mismatched proposal scale**: the fixed scaling (c=1) with identity covariance doesn't adapt to different parameter scales.
+
+-   **Inefficient exploration**: random walk in unrelated directions / chain gets "stuck" more frequently.
+
+This demonstrates the importance of tailoring proposal distributions to the specific problem rather than using generic choices.
+
+# Problem 7 HMC
+
+## Problem 7a
+
+Here we are repeats the Poisson-regression analysis from Problem 5, but now using HMC via Stan.
+
+```{r, eval = FALSE}
+#Setup
+library(rstan)
+library(loo)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+data <- read.csv("https://github.com/mattiasvillani/BayesLearnCourse/raw/master/assignment/bugs.csv",
+                 header = TRUE)
+y <- data$nBugs
+X <- as.matrix(data[,-1])
+N <- length(y)
+P <- ncol(X)
+tau <- 10
+
+
+poisson_stan_code <- "
+data {
+  int<lower=1> N;                 // observations
+  int<lower=1> P;                 // predictors
+  int<lower=0> y[N];              // counts
+  matrix[N,P] X;                  // design matrix
+  real<lower=0> tau;              // prior scale
+}
+parameters {
+  vector[P] beta;                 // coefficients
+}
+model {
+  beta ~ normal(0, tau);          // prior N(0, tau^2)
+  y ~ poisson_log_glm(X, rep_vector(0, N), beta);  // log-link Poisson
+}
+generated quantities {
+  vector[N] log_lik;              // for LOO later
+  vector[N] eta = X * beta;       // linear predictor (log means)
+  for (n in 1:N)
+    log_lik[n] = poisson_log_lpmf(y[n] | eta[n]);
+}
+"
+  
+stan_file <- "poisson_glm_clean.stan"
+writeLines(c(poisson_stan_code, ""), stan_file)  # <-- add blank line
+
+poisson_dat <- list(N=N, P=P, y=y, X=X, tau=tau)
+
+fit_pois <- rstan::stan(file = stan_file, data = poisson_dat,
+                        chains = 4, iter = 1000, warmup = 750, seed = 123)
+print(fit_pois, pars = "beta", probs = c(.025,.5,.975))
+```
+
+The Hamiltonian Monte Carlo (HMC) sampler was run in Stan using four chains with 1000 iterations each, of which 750 were used as warm-up. This gave 1000 draws from the posterior distribution.
+
+The values of $\hat{R}\approx1.00$ for all parameters show that the chains converged well. A warning about low effective sample size suggests that running the sampler for more iterations could make the results slightly more stable.
+
+The results from the Poisson regression show that the proportion of C code, the proportion of Java code, and the complexity of the module all have clear positive effects on the expected number of bugs. The effect of number of commits}is very small and uncertain. The estimated coefficients are $\beta_{propC}=1.45$, $\beta_{propJava}=3.17$, and $\beta_{complexity}=2.15$. When these values are exponentiated, they correspond to about $e^{1.45}\!\approx\!4.3$, $e^{3.17}\!\approx\!23.8$, and $e^{2.15}\!\approx\!8.6$, meaning that modules with higher proportions of C or Java code or higher complexity are expected to have many more bugs.The number of commits, however, does not seem to have any clear influence.
+
+## Problem 7b Prediction
+
+In this part we use the estimated Poisson regression model from part\~(7a) to predict the number of bugs in a new software release with features $x_{\text{new}} = (1,\,10,\,0.45,\,0.5,\,0.89)$. For each draw of the regression coefficients\~$\beta$ from the posterior distribution, we calculate the mean number of bugs $\lambda_{\text{new}} = \exp(x_{\text{new}}^\top \beta)$ and then draw a simulated bug count $\tilde{y}_{\text{new}}$ from a Poisson distribution with mean $\lambda_{\text{new}}$. The collection of these draws forms the posterior predictive distribution of the number of bugs for the new release.
+
+```{r, eval = FALSE}
+poisson_stan_code_b <- "
+data {
+  int<lower=1> N;
+  int<lower=1> P;
+  int<lower=0> y[N];
+  matrix[N,P] X;
+  vector[P] xNew;                 // covariates for the upcoming release
+  real<lower=0> tau;
+}
+parameters {
+  vector[P] beta;
+}
+model {
+  beta ~ normal(0, tau);
+  y ~ poisson_log_glm(X, rep_vector(0, N), beta);
+}
+generated quantities {
+  vector[N] log_lik;
+  vector[N] eta = X * beta;
+  int y_new;                      // one predictive draw per posterior draw
+  for (n in 1:N)
+    log_lik[n] = poisson_log_lpmf(y[n] | eta[n]);
+  {
+    real eta_new = dot_product(xNew, beta);  // log-mean for new release
+    y_new = poisson_rng(exp(eta_new));       // predictive draw
+  }
+}
+"
+stan_file_b <- "poisson_glm_b.stan"
+writeLines(c(poisson_stan_code_b, ""), stan_file_b)  # ensure trailing newline
+```
+
+```{r, eval = FALSE}
+# Q3B Decision making/prob prediction
+# 1.generate predictive data
+nSim <- 10000
+yPred <- numeric(nSim)
+
+for(i in 1:nSim){
+  theta_i <- thetaDraws[i]  
+  yPred[i] <- rpois(1, lambda = theta_i) #rxx fuction
+}
+
+# 2.utility function(from text) price, cost,a=production, y=demand,u=profit
+utility <- function(y, a){
+  p <- 10000
+  cost <- 2000
+  u <- p * pmin(y, a) - cost * pmax(0, a - y)
+  return(u)
+}
+
+# 3.maximize expected utility
+actions <- 1:20   # production range
+exp_utils <- numeric(length(actions))
+
+for(j in 1:length(actions)){
+  a <- actions[j]
+  exp_utils[j] <- mean(utility(yPred, a))
+}
+
+# plot
+plot(actions, exp_utils, type="b", pch=19, main="Expected Utility vs Actions")
+
+best_idx <- which.max(exp_utils)
+best_action <- actions[best_idx]
+
+cat("Optimal Action (a):", best_action, "\n")
+cat("Max Expected Utility:", exp_utils[best_idx], "\n")
+```
+
+```{r, eval = FALSE}
+xNew <- c(1, 10, 0.45, 0.5, 0.89)
+stopifnot(length(xNew) == P)
+
+poisson_dat_b <- list(N=N, P=P, y=as.integer(y), X=X, xNew=as.vector(xNew), tau=tau)
+
+set.seed(123)
+fit_pois_b <- rstan::stan(file = stan_file_b, data = poisson_dat_b,
+                           chains = 4, iter = 1000, warmup = 750)
+
+post_b <- rstan::extract(fit_pois_b)
+ynew_draws <- post_b$y_new                 # predictive distribution
+
+# Summaries + plot
+pred_q   <- quantile(ynew_draws, c(.025, .5, .975))
+pred_med <- unname(pred_q[2])
+pred_ci  <- unname(pred_q[c(1,3)])
+
+cat("Posterior predictive median:", pred_med, "\n")
+cat("95% predictive interval: [", pred_ci[1], ",", pred_ci[2], "]\n")
+```
+
+The posterior predictive median for the new release is 19 bugs, with a 95% predictive interval of \[9,30\]. The posterior median of the mean rate is $\text{median}(\lambda_{\text{new}}) \approx 19$, which is consistent with the predictive count summary.
+
+```{r, eval = FALSE}
+# Predictive histogram
+hist(ynew_draws, breaks = 30, col = "lightblue", border = "white",
+     main = "Posterior predictive (Poisson model)",
+     xlab = "Predicted bugs for new release")
+```
+
+The histogram of the predictive draws shows the posterior predictive distribution of the number of bugs for the new software release based on the Poisson regression model. The distribution is roughly right-skewed, with most of the simulated values falling between 10 and 30 bugs.
+
+## Problem 7c Negative Binomial
+
+To check whether the Poisson model fits the data well, we also estimated a Negative\~Binomial (NB) regression model. This model allows extra variability in the counts by introducing a dispersion parameter $r>0$. When $r$ is large, the NB distribution behaves like a Poisson distribution (with similar mean and variance). When $r$ is small, the NB distribution allows the variance to be much larger than the mean, which captures over--dispersion in the data. We placed an Exponential$(1)$ prior on $r$ and estimated the model in the same way as before using HMC.
+
+```{r, eval = FALSE}
+nb_stan <- "
+data {
+  int<lower=1> N;                 // observations
+  int<lower=1> P;                 // predictors
+  int<lower=0> y[N];              // counts
+  matrix[N,P] X;                  // design matrix
+  real<lower=0> tau;              // prior scale for beta
+}
+parameters {
+  vector[P] beta;                 // coefficients
+  real<lower=0> r;                // NB dispersion (over-dispersion)
+}
+model {
+  // Priors
+  beta ~ normal(0, tau);
+  r ~ exponential(1);
+
+  // Likelihood: NB with log link (mean = exp(X * beta), dispersion r)
+  y ~ neg_binomial_2_log_glm(X, rep_vector(0, N), beta, r);
+}
+generated quantities {
+  vector[N] log_lik;
+  vector[N] eta = X * beta;       // linear predictor (log means)
+  for (n in 1:N)
+    log_lik[n] = neg_binomial_2_log_lpmf(y[n] | eta[n], r);
+}
+"
+writeLines(c(nb_stan, ""), "neg_binom_glm.stan") 
+
+
+nb_dat <- list(N=N, P=P, y=as.integer(y), X=X, tau=tau)
+
+fit_nb <- rstan::stan(file="neg_binom_glm.stan", data=nb_dat,
+                         chains=4, iter=1000, warmup=750)
+print(fit_nb, pars=c("beta","r"), probs=c(.025,.5,.975))
+```
+
+```{r, eval = FALSE}
+# Q3C multinomial/dirichlet
+rdirichlet <- function(n, alpha) {
+  l <- length(alpha)
+  x <- matrix(rgamma(l * n, alpha), ncol = l, byrow = TRUE)
+  sm <- rowSums(x)
+  return(x/sm)
+}
+y <- c()
+prior_alpha <- c(1,1,1)
+post_alpha <- prior_alpha + y
+
+nSim <- 10000
+thetaDraws <- rdirichlet(nSim, post_alpha)
+
+# 1.probability calculation
+prob_brand1_best <- mean(thetaDraws[,1] > thetaDraws[,2] & thetaDraws[,1] > thetaDraws[,3])
+cat("Prob Brand 1 is best:", prob_brand1_best, "\n")
+
+# 2.predictive probability
+yPred_brand1 <- numeric(nSim)
+
+for(i in 1:nSim){
+  sim_sales <- rmultinom(1, size = 10, prob = thetaDraws[i, ])
+  yPred_brand1[i] <- sim_sales[1]
+}
+
+prob_out_of_stock <- mean(yPred_brand1 >= 6)
+cat("Prob run out of stock:", prob_out_of_stock, "\n")
+```
+
+```{r, eval = FALSE}
+# Incidence Rate Ratios (exp(beta)) with 95% CIs
+sum_beta_nb <- summary(fit_nb, pars="beta", probs=c(.025,.5,.975))$summary
+IRR_nb <- cbind(
+  IRR_med  = exp(sum_beta_nb[,"50%"]),
+  IRR_low  = exp(sum_beta_nb[,"2.5%"]),
+  IRR_high = exp(sum_beta_nb[,"97.5%"])
+)
+round(IRR_nb, 3)
+```
+
+The regression coefficients are similar to those obtained in the Poisson model. The estimated incidence rate ratios (IRR) are approximately $3.7$ for the proportion of\~C code, $22.0$ for the proportion of\~Java code, and $11.3$ for complexity, all indicating strong positive effects on the expected number of bugs. The coefficient for number of commits remains close to\~1, confirming a weak or negligible influence. Overall, both the Poisson and Negative Binomial models highlight that language composition and module complexity are the main drivers of bug counts.
+
+```{r, eval = FALSE}
+post_nb <- rstan::extract(fit_nb)
+r_draws <- post_nb$r
+
+hist(r_draws, breaks=30, col="lightblue", border="white",
+     main="Posterior of r (NB dispersion)", xlab="r")
+
+quantile(r_draws, c(.025, .5, .975))
+```
+
+The posterior median of the dispersion parameter was $r=2.06$ with a 95% credible interval of $[1.34,\,3.03]$ Because these values of r are relatively small, the data show clear evidence of overdispersion. This indicates that the Poisson regression model from Problem 7a) does not fully capture the variability in the data.
+
+## Problem 7d Model Comparison(LOO)
+
+Using the posterior samples from rstan and the loo package, we will compute the expected log predictive density from leave-one-out cross-validation (ELPD-LOO) for each model to compare.
+
+```{r, eval = FALSE}
+# Extract pointwise log-likelihood arrays (from generated quantities)
+ll_pois <- loo::extract_log_lik(fit_pois, parameter_name = "log_lik",
+                                merge_chains = FALSE)
+ll_nb   <- loo::extract_log_lik(fit_nb, parameter_name = "log_lik",
+                                merge_chains = FALSE)
+
+# Relative efficiency for PSIS-LOO
+r_eff_pois <- loo::relative_eff(exp(ll_pois), chain_id = rep(1:4, each = dim(ll_pois)[1]))
+r_eff_nb   <- loo::relative_eff(exp(ll_nb),   chain_id = rep(1:4, each = dim(ll_nb)[1]))
+
+# Compute LOO objects
+loo_pois <- loo::loo(ll_pois, r_eff = r_eff_pois)
+loo_nb   <- loo::loo(ll_nb,   r_eff = r_eff_nb)
+
+# Compare models (higher ELPD = better predictive fit)
+comp <- loo::loo_compare(loo_pois, loo_nb)
+comp
+print(loo_pois)
+print(loo_nb)
+```
+
+The expected log predictive density (ELPD--LOO) for the Poisson regression was $-301.4$ (SE\~35.7), while the Negative Binomial (NB) model achieved $-239.8$ (SE\~10.2). The estimated difference in predictive accuracy was $\Delta ELPD = 61.6$ with an associated standard error of\~27.3, indicating that the NB model provides a noticeably better predictive fit to the data.
+
+1.  Bernoulli/Binomial (p) - Beta (α, β)
+2.  Poisson( $\theta$ ) - Gamma(α, β)
+3.  Normal - Normal( $\mu$, $\sigma$)
+4.  Exponential ( $\lambda$ ) - Gamma (α, β)
+5.  Multinomial ( P )- Dirichlet (α)
+
+Both models had good Pareto\~$k$ diagnostics, with only one observation ($\approx1\%$) showing a value above\~0.7, so the LOO results are considered reliable.
+
+Because the NB model has a substantially higher ELPD-LOO and smaller effective number of parameters ($p_{loo}=6.2$ versus\~18.9), it predicts new data more accurately while avoiding overfitting. Taken together with the moderate dispersion parameter $r\approx2.0$ from problem 7c, these results suggest that the Negative Binomial regression provides the most suitable overall description of the data.
